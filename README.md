@@ -112,8 +112,11 @@ USES_PROCEDURE — применяемые процедуры
 ## Структура файлов
 
 ├── JurLenta_s.json              # Сбор данных
+
 ├── judlenta_neo4j.json          # Построение графа
+
 ├── judlenta_relationships.json  # Семантические связи
+
 └── Judlenta_agent.json          # Интерфейс Telegram
 
 
