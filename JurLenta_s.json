@@ -1,0 +1,135 @@
+{
+  "name": "JurLenta_s",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO jurLenta (\n    title, link, pub_date, content, content_snippet, iso_date\n)\nVALUES (\n    '{{ $json.title }}',\n    '{{ $json.link }}',\n    '{{ $json.pubDate }}',\n    '{{ $json.content }}',\n    '{{ $json.contentSnippet }}',\n    '{{ $json.isoDate }}'\n)\nON CONFLICT (link) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        416,
+        0
+      ],
+      "id": "3d315b10-04b6-4ea4-b74c-f840595a5e9e",
+      "name": "Execute a SQL query jurLenta",
+      "credentials": {
+        "postgres": {
+          "id": "wujVNwu5jIKjF2n0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": " http://rapsinews.ru/export/rss2/judicial_information/index.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a8d5ca9d-daf9-4e02-859a-e2d6461ac4ce",
+      "name": "judicial_information"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -16,
+        0
+      ],
+      "id": "5c8b9c90-78ae-42ae-b720-daf7206e60b2",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "FPPMoH79vRo7W97V",
+          "mode": "list",
+          "cachedResultName": "judlenta_neo4j"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "fe47b4da-f717-44ad-bb47-425edc4eedfc",
+      "name": "To_graph"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "judicial_information": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query jurLenta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query jurLenta": {
+      "main": [
+        [
+          {
+            "node": "To_graph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "judicial_information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c4fe5995-b416-4726-960c-8749c56d9362",
+  "meta": {
+    "instanceId": "9ce263ea74ac56142ad0b445edd4996f0dce195bb2058608aecc86f0fd24906f"
+  },
+  "id": "okvSSrf2AL5NErSw",
+  "tags": []
+}

@@ -1,0 +1,217 @@
+{
+  "name": "judlenta_neo4j",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.content }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Ты — эксперт по графовым базам данных, специализирующийся на Neo4j и языке запросов Cypher. Твоя задача — помочь пользователю спроектировать, наполнить данными и проанализировать графовую базу данных на основе предоставленного набора структурированных или неструктурированных данных.\n\nИнструкции по выполнению задачи\nПользователь предоставит тебе описание данных (в виде текста, таблиц, JSON или иного формата). Ты должен выполнить следующие шаги:\n\nПроанализируй предоставленные данные. Выдели сущности (узлы) и связи между ними (ребра). Определи их типы (лейблы) и свойства (атрибуты).\n\nРазработай модель данных. Предложи структуру графа: какие лейблы узлов и типы связей использовать, какие свойства для них задать.\n\nСгенерируй код на Cypher. Создай полные, готовые к выполнению скрипты Cypher, разделенные по этапам, как в примере пользователя:\n\nЭтап 1: Создание узлов (Nodes). Используй оператор MERGE для создания всех уникальных узлов с их лейблами и свойствами.\n\nЭтап 2: Создание связей (Relationships). Используй операторы MATCH и MERGE для установления связей между созданными узлами. Не забудь указать тип связи и ее свойства (если они есть).\n\n(Опционально) Этап 3: Валидация и проверка. Предложи простые запросы для проверки целостности данных и просмотра результата.\n\nБудь внимателен к деталям. Следуй лучшим практикам Neo4j: используй осмысленные имена для лейблов, связей и свойств. MERGE помогает избежать дубликатов.\n\n"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        384,
+        -48
+      ],
+      "id": "e85f687b-8a23-4f02-a379-6741868993bc",
+      "name": "cypher"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.37:7474/db/judlentaauto/tx/commit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "authorization",
+              "value": "Basic bmVvNGo6eW91cl9wYXNzd29yZA=="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"statements\": {{JSON.stringify($json.statements)}}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        -48
+      ],
+      "id": "e82061eb-503e-4e4e-bf01-9e1a72b09b61",
+      "name": "judicial_information_graph",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "X10TuauxKleIULlv",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "jurlenta",
+          "mode": "list",
+          "cachedResultName": "jurlenta"
+        },
+        "where": {
+          "values": [
+            {
+              "column": "new",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        192,
+        -48
+      ],
+      "id": "d3e10416-20b6-4e06-a01a-98545e899005",
+      "name": "jurLenta",
+      "credentials": {
+        "postgres": {
+          "id": "wujVNwu5jIKjF2n0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Обработка вывода LLM и создание валидного JSON для Neo4j\nconst items = [];\n\n// Обрабатываем все входные элементы\nfor (const item of $input.all()) {\n  const llmOutput = item?.json?.text || '';\n  \n  console.log('Processing item:', item.index, 'Raw LLM output length:', llmOutput.length);\n  \n  // Разделяем на отдельные запросы\n  let statements = llmOutput\n    .split('\\n')\n    .map(line => line.trim())\n    .filter(line => line.startsWith('MERGE') && line.length > 10)\n    .map(statement => ({\n      statement: statement\n    }));\n\n  // Если нет запросов, создаем fallback\n  if (statements.length === 0) {\n    statements = [{\n      statement: `MERGE (default:Court {name: 'Default Court ${item.index}'}) SET default.type = 'court'`\n    }];\n  }\n\n  // ДОБАВЛЯЕМ ЗАПРОС НА ОЧИСТКУ ПУСТЫХ УЗЛОВ\n  statements.push({\n    statement: \"MATCH (n) WHERE size(keys(n)) = 0 AND size(labels(n)) = 0 DETACH DELETE n\"\n  });\n\n  console.log(`Item ${item.index}: Processed ${statements.length} statements`);\n\n  // Добавляем результат для каждого элемента\n  items.push({\n    json: {\n      statements: statements,\n      totalStatements: statements.length,\n      sourceItemIndex: item.index\n    }\n  });\n}\n\nconsole.log('Total items processed:', items.length);\nconsole.log('Total statements across all items:', items.reduce((sum, item) => sum + item.json.totalStatements, 0));\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        -48
+      ],
+      "id": "4c877b74-4c78-4527-a72d-c6b03a6ae529",
+      "name": "Code"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -48
+      ],
+      "id": "d16f6e98-6371-44ff-a691-3341a9fdd8b1",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        384,
+        160
+      ],
+      "id": "5333e8ac-5a37-472e-b710-1b26732e9056",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "RuRzX28lgmAEHfEg",
+          "name": "OpenRouter account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "cypher": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "jurLenta": {
+      "main": [
+        [
+          {
+            "node": "cypher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "judicial_information_graph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "jurLenta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "cypher",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "fc8b934f-90be-4925-a5be-bb194d477e41",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9ce263ea74ac56142ad0b445edd4996f0dce195bb2058608aecc86f0fd24906f"
+  },
+  "id": "FPPMoH79vRo7W97V",
+  "tags": []
+}

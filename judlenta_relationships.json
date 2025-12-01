@@ -1,0 +1,440 @@
+{
+  "name": "judlenta_relationships",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        192
+      ],
+      "id": "31924f8e-c4c7-4ab3-8980-4a7bc8f42079",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.37:7474/db/judlentaauto/tx/commit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "authorization",
+              "value": "Basic bmVvNGo6eW91cl9wYXNzd29yZA=="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"statements\": [\n    {\n      \"statement\": \"MATCH (n) RETURN n LIMIT 50\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        192
+      ],
+      "id": "1f15225a-fb94-45ce-86a2-3c527a206e16",
+      "name": "judicial_information_graph",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "X10TuauxKleIULlv",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxTokens": 2000,
+          "temperature": 0.5
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        608,
+        208
+      ],
+      "id": "ee85ff07-5546-4aa0-ba86-eab23a46fb26",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "RuRzX28lgmAEHfEg",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Преобразование в простой текстовый формат\nconst result = $input.first().json;\nconsole.log('Neo4j raw response:', JSON.stringify(result, null, 2));\n\nlet output = \"НАЙДЕННЫЕ УЗЛЫ В БАЗЕ ДАННЫХ NEO4J:\\n\\n\";\n\nif (result && result.results && result.results[0] && result.results[0].data) {\n  result.results[0].data.forEach((item, index) => {\n    const node = item.row[0];\n    const nodeId = item.meta[0].id;\n    \n    if (Object.keys(node).length === 0) {\n      output += `${index + 1}. [Пустой узел] (ID: ${nodeId})\\n`;\n    } else {\n      const props = Object.entries(node)\n        .map(([key, value]) => `${key}: \"${value}\"`)\n        .join(', ');\n      \n      output += `${index + 1}. Узел ${nodeId}: { ${props} }\\n`;\n    }\n  });\n  \n  output += `\\nВсего узлов в Neo4j: ${result.results[0].data.length}`;\n} else {\n  output = \"Нет данных из Neo4j или неверный формат ответа\";\n}\n\nreturn [{ json: { \n  text: output,\n  neo4j_data: result \n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        192
+      ],
+      "id": "4d6016b4-167c-44c3-9bd3-cb51c35caee9",
+      "name": "Formater"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Упрощенный парсинг Cypher-запросов\nconst input = $input.all();\nconsole.log('Input to Sypher:', JSON.stringify(input, null, 2));\n\nconst statements = [];\n\ninput.forEach(item => {\n  const text = item.json.text || item.json.output || '';\n  console.log('Processing text:', text);\n  \n  // Ищем Cypher-запросы между ```cypher блоками\n  const regex = /```cypher\\n([\\s\\S]*?)\\n```/g;\n  let match;\n  \n  while ((match = regex.exec(text)) !== null) {\n    const queries = match[1].split(';').filter(q => q.trim().length > 0);\n    queries.forEach(query => {\n      const trimmedQuery = query.trim();\n      if (trimmedQuery.startsWith('MERGE') || trimmedQuery.startsWith('MATCH') || trimmedQuery.startsWith('CREATE')) {\n        statements.push({\n          statement: trimmedQuery\n        });\n      }\n    });\n  }\n});\n\n// Если не нашли запросы, создаем базовые связи\nif (statements.length === 0) {\n  console.log('No Cypher queries found, creating default ones');\n  statements.push(\n    {\n      statement: \"MERGE (c:Court {name: 'Пресненский суд Москвы'}) MERGE (case:Case {description: 'дело о растрате'}) MERGE (c)-[:HEARS]->(case)\"\n    },\n    {\n      statement: \"MERGE (p:Person {name: 'Михаил Минаев'}) MERGE (case:Case {description: 'дело о растрате'}) MERGE (p)-[:INVOLVES {role: 'подсудимый'}]->(case)\"\n    },\n    {\n      statement: \"MERGE (c1:Court {name: 'Верхнепышминский городской суд'}) MERGE (c2:Court {name: 'Пресненский суд Москвы'}) MERGE (c1)-[:APPEALS_TO]->(c2)\"\n    }\n  );\n}\n\nconsole.log(`Создано ${statements.length} Cypher-запросов`);\n\nreturn [{\n  json: {\n    statements: statements,\n    total: statements.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        0
+      ],
+      "id": "7832a4b2-ed93-48ef-935c-6fe143526375",
+      "name": "Sypher"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.37:7474/db/judlentaauto/tx/commit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "authorization",
+              "value": "Basic bmVvNGo6eW91cl9wYXNzd29yZA=="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"statements\": {{JSON.stringify($json.statements)}}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1152,
+        208
+      ],
+      "id": "a6f98cb2-19e9-424a-9884-214ec46a0a49",
+      "name": "judicial_information_graph1",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "X10TuauxKleIULlv",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "jurlenta",
+          "mode": "list",
+          "cachedResultName": "jurlenta"
+        },
+        "where": {
+          "values": [
+            {
+              "column": "new",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4d637fb2-03b1-4f35-9c77-cef11fd7e03d",
+      "name": "jurLenta",
+      "credentials": {
+        "postgres": {
+          "id": "wujVNwu5jIKjF2n0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=На основе этих данных создай Cypher-запросы для судебной системы:\n\n{{ $json.full_context }}\n\nСоздай 10-15 различных связей используя эти типы отношений:\n- HEARS - суд рассматривает дело\n- INVOLVES - лицо участвует в деле (укажи роль)\n- BASED_ON - дело основано на процедуре\n- APPEALS_TO - иерархия судов\n- USES_PROCEDURE - суд использует процедуру\n\nФормат: только Cypher-запросы между ```cypher блоками. Каждый запрос должен быть полным и исполняемым.",
+        "options": {
+          "systemMessage": "Ты — эксперт по Cypher и судебной системе РФ. Создай семантически корректные связи между узлами."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        608,
+        0
+      ],
+      "id": "c83d63af-a993-43d5-9f57-f044cc208f6d",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Объединяем данные из двух источников\nconst inputData = $input.all();\nconsole.log('Input to Code1:', JSON.stringify(inputData, null, 2));\n\n// Данные от Formater (Neo4j)\nconst neo4jData = inputData.find(item => item.json.text && item.json.text.includes('NEO4J')) || inputData[0];\n\n// Данные от Code (PostgreSQL)\nconst postgresData = inputData.find(item => item.json.combined_content && item.json.combined_content.includes('POSTGRESQL')) || inputData[1];\n\nconst neo4jText = neo4jData?.json?.text || \"Нет данных из Neo4j\";\nconst postgresText = postgresData?.json?.combined_content || \"Нет данных из PostgreSQL\";\n\nconst fullContext = `ДАННЫЕ ИЗ NEO4J:\\n${neo4jText}\\n\\nДАННЫЕ ИЗ POSTGRESQL:\\n${postgresText}`;\n\nconsole.log('Full context:', fullContext);\n\nreturn [{\n  json: {\n    text: neo4jText,\n    combined_content: postgresText,\n    full_context: fullContext\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "5facb487-e841-437c-a41a-faca6e6e4a9a",
+      "name": "integrate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconsole.log('PostgreSQL raw data:', JSON.stringify(items, null, 2));\n\nlet content = \"ДАННЫЕ ИЗ POSTGRESQL:\\n\\n\";\n\nif (items && items.length > 0) {\n  items.forEach((item, index) => {\n    content += `Запись ${index + 1}: ${JSON.stringify(item.json)}\\n`;\n  });\n  content += `\\nВсего записей: ${items.length}`;\n} else {\n  content = \"Нет данных из PostgreSQL или таблица jurlenta пуста\";\n}\n\nreturn [{ json: { \n  combined_content: content,\n  postgres_data: items \n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "b522027b-6521-432a-aadf-8f8f26556c79",
+      "name": "convertor"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE jurlenta\nSET new = 0 \nWHERE link = '{{ $json.link }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        928,
+        -160
+      ],
+      "id": "120c7e45-d41d-426f-957a-cc988de39a58",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "wujVNwu5jIKjF2n0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        608,
+        -160
+      ],
+      "id": "f2e277a2-ee12-4157-a1a8-9a0314c5b0c1",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e7df8361-f3ea-46cd-b15f-285debb09b72",
+              "name": "link",
+              "value": "={{ $json.link }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        -176
+      ],
+      "id": "706c9385-13e6-44a7-a895-36713b2cc81b",
+      "name": "Global_var"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "judicial_information_graph",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "jurLenta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "judicial_information_graph": {
+      "main": [
+        [
+          {
+            "node": "Formater",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formater": {
+      "main": [
+        [
+          {
+            "node": "integrate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sypher": {
+      "main": [
+        [
+          {
+            "node": "judicial_information_graph1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "jurLenta": {
+      "main": [
+        [
+          {
+            "node": "convertor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Global_var",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Sypher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "integrate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "convertor": {
+      "main": [
+        [
+          {
+            "node": "integrate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "judicial_information_graph1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        []
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Global_var": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "7ff67862-091e-4ada-b223-ddf07acc9d28",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9ce263ea74ac56142ad0b445edd4996f0dce195bb2058608aecc86f0fd24906f"
+  },
+  "id": "lcNYWRfaJqH2l108",
+  "tags": []
+}
